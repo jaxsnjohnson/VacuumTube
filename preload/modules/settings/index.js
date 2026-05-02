@@ -29,6 +29,7 @@ const scrollOffsets = {}
 let overlayVisible = false;
 let currentTabIndex = 0;
 let currentItemIndex = 0;
+let microphonePermissionStatus = 'unknown';
 
 //settings
 let tabs = [
@@ -46,6 +47,7 @@ let tabs = [
     { id: 'no_window_decorations' },
     { id: 'keep_on_top', func: (value) => ipcRenderer.invoke('set-on-top', value) },
     { id: 'pause_on_blur' },
+    { id: 'permissions', hide: process.platform !== 'darwin' },
     { id: 'userstyles' },
     { id: 'touch_overlay' },
     { id: 'controller_support' }
@@ -96,6 +98,36 @@ function createOverlayDOM() {
     }
 
     const customContent = {
+
+        'permissions':
+        el('div', { className: 'vt-permissions-section' }, [
+            el('p', { className: 'vt-permissions-description', textContent: locale.settings.permissions.description }),
+            el('div', { className: 'vt-permission-card' }, [
+                el('div', { className: 'vt-setting-info' }, [
+                    el('span', { className: 'vt-setting-title', textContent: locale.settings.permissions.microphone_title }),
+                    el('span', { className: 'vt-setting-description', textContent: locale.settings.permissions.microphone_description }),
+                    el('span', {
+                        className: 'vt-permission-status',
+                        id: 'vt-microphone-status',
+                        textContent: formatMicrophonePermissionStatus(microphonePermissionStatus)
+                    })
+                ])
+            ]),
+            el('div', {
+                className: 'vt-button',
+                dataAction: 'request-microphone-permission',
+                dataIndex: '0'
+            }, [
+                el('span', { textContent: locale.settings.permissions.request_microphone })
+            ]),
+            el('div', {
+                className: 'vt-button',
+                dataAction: 'open-microphone-privacy-settings',
+                dataIndex: '1'
+            }, [
+                el('span', { textContent: locale.settings.permissions.open_microphone_settings })
+            ])
+        ]),
 
         'userstyles': 
         el('div', { className: 'vt-userstyles-section' }, [
@@ -191,6 +223,48 @@ function getOverlay() {
     return document.getElementById('vt-settings-overlay-root');
 }
 
+function getMicrophonePermissionLabel(status) {
+    return locale.settings.permissions.statuses[status] || locale.settings.permissions.statuses.unknown || status;
+}
+
+function formatMicrophonePermissionStatus(status) {
+    return `${locale.settings.permissions.status_label}: ${getMicrophonePermissionLabel(status)}`
+}
+
+function setMicrophonePermissionStatus(status) {
+    microphonePermissionStatus = status || 'unknown'
+
+    const statusElement = document.getElementById('vt-microphone-status')
+    if (!statusElement) return;
+
+    statusElement.textContent = formatMicrophonePermissionStatus(microphonePermissionStatus)
+    statusElement.dataset.status = microphonePermissionStatus;
+}
+
+function setMicrophonePermissionLoading() {
+    const statusElement = document.getElementById('vt-microphone-status')
+    if (!statusElement) return;
+
+    statusElement.textContent = locale.settings.permissions.status_loading
+    delete statusElement.dataset.status;
+}
+
+async function refreshMicrophonePermissionStatus() {
+    if (process.platform !== 'darwin') return;
+
+    const statusElement = document.getElementById('vt-microphone-status')
+    if (!statusElement) return;
+
+    setMicrophonePermissionLoading()
+
+    try {
+        setMicrophonePermissionStatus(await ipcRenderer.invoke('get-microphone-permission-status'))
+    } catch (error) {
+        console.error('[Settings Overlay] Failed to load microphone permission status:', error)
+        setMicrophonePermissionStatus('unknown')
+    }
+}
+
 async function refreshUserstylesList() {
     const listContainer = document.getElementById('vt-userstyles-list')
     if (!listContainer) return
@@ -254,6 +328,7 @@ function showOverlay() {
     overlay.focus()
 
     refreshUserstylesList()
+    refreshMicrophonePermissionStatus()
 
     currentTabIndex = 0;
     currentItemIndex = 0;
@@ -502,6 +577,12 @@ function selectTab(index) {
 
         const activePanel = overlay.querySelector(`.vt-content-panel[data-panel="${tabId}"]`)
         if (activePanel) activePanel.classList.add('vt-panel-active')
+
+        if (tabId === 'permissions') {
+            refreshMicrophonePermissionStatus()
+        } else if (tabId === 'userstyles') {
+            refreshUserstylesList()
+        }
     }
 }
 
@@ -549,6 +630,24 @@ function toggleUserstyle(filename) {
     window.dispatchEvent(new CustomEvent('vt-userstyle-toggle', {
         detail: { filename, enabled: isCurrentlyDisabled }
     }))
+}
+
+async function handleButtonAction(action) {
+    try {
+        if (action === 'open-userstyles-folder') {
+            await ipcRenderer.invoke('open-userstyles-folder')
+        } else if (action === 'request-microphone-permission') {
+            setMicrophonePermissionLoading()
+            setMicrophonePermissionStatus(await ipcRenderer.invoke('request-microphone-permission'))
+        } else if (action === 'open-microphone-privacy-settings') {
+            await ipcRenderer.invoke('open-microphone-privacy-settings')
+        }
+    } catch (error) {
+        console.error(`[Settings Overlay] Failed to run button action ${action}:`, error)
+        if (action === 'request-microphone-permission') {
+            setMicrophonePermissionStatus('unknown')
+        }
+    }
 }
 
 function getItemCount() {
@@ -672,9 +771,7 @@ function handleKeyDown(e) {
                 const button = panel.querySelector(`.vt-button[data-index="${currentItemIndex}"]`)
                 if (button) {
                     const action = button.dataset.action;
-                    if (action === 'open-userstyles-folder') {
-                        ipcRenderer.invoke('open-userstyles-folder')
-                    }
+                    handleButtonAction(action)
 
                     return;
                 }
@@ -775,9 +872,7 @@ function setupEventListeners() {
         const button = e.target.closest('.vt-button')
         if (button) {
             const action = button.dataset.action;
-            if (action === 'open-userstyles-folder') {
-                ipcRenderer.invoke('open-userstyles-folder')
-            }
+            handleButtonAction(action)
 
             return;
         }

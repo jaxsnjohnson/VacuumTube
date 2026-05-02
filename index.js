@@ -44,11 +44,111 @@ VacuumTube overrides some things to identify properly, but this user agent has t
 const youtubeUserAgent = `Mozilla/5.0 (PS4; Leanback Shell) Cobalt/26.lts.0-qa; compatible; VacuumTube/${package.version}` //for youtube, sent in innertube calls
 const youtubeClientUserAgent = `Mozilla/5.0 (PS4; Leanback Shell) Cobalt/19.lts.0-qa; compatible; VacuumTube/${package.version}` //for youtube, somewhere in client scripts this matters because it parses cobalt version explicitly from the user agent, which affects playability because cobalt 26 "should" work with widevine, when we can't support that
 const userAgent = `VacuumTube/${package.version}` //for anything else
+const youtubeOrigin = 'https://www.youtube.com'
+const microphonePrivacySettingsUrl = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
 
 const runningOnSteam = process.env.SteamOS === '1' && process.env.SteamGamepadUI === '1'
 
 let win;
 let config;
+let microphonePromptPromise = null;
+
+function getUrlOrigin(value) {
+    if (!value) return null;
+
+    try {
+        const origin = new URL(value).origin
+        return origin === 'null' ? null : origin;
+    } catch {
+        return null;
+    }
+}
+
+function isYoutubePermissionRequest(webContents, requestingOrigin, details = {}) {
+    const requestingFrameOrigin = getUrlOrigin(details.requestingUrl)
+        || getUrlOrigin(details.securityOrigin)
+        || getUrlOrigin(requestingOrigin)
+
+    if (requestingFrameOrigin) {
+        return requestingFrameOrigin === youtubeOrigin
+    }
+
+    return getUrlOrigin(webContents?.getURL?.()) === youtubeOrigin
+}
+
+function isAudioMediaRequest(details = {}) {
+    if (Array.isArray(details.mediaTypes)) {
+        return details.mediaTypes.length > 0 && details.mediaTypes.every((type) => type === 'audio')
+    }
+
+    return details.mediaType === 'audio'
+}
+
+function getMicrophonePermissionStatus() {
+    if (process.platform !== 'darwin') return 'unsupported';
+
+    try {
+        return electron.systemPreferences.getMediaAccessStatus('microphone')
+    } catch (error) {
+        console.error('[Permissions] Failed to get microphone access status:', error)
+        return 'unknown'
+    }
+}
+
+async function requestMicrophonePermissionStatus() {
+    if (process.platform !== 'darwin') return 'unsupported';
+
+    const status = getMicrophonePermissionStatus()
+    if (status !== 'not-determined') return status;
+
+    if (!microphonePromptPromise) {
+        microphonePromptPromise = electron.systemPreferences.askForMediaAccess('microphone')
+        .catch((error) => {
+            console.error('[Permissions] Failed to request microphone access:', error)
+            return false
+        })
+        .finally(() => {
+            microphonePromptPromise = null;
+        })
+    }
+
+    await microphonePromptPromise
+
+    return getMicrophonePermissionStatus()
+}
+
+async function requestMicrophonePermission() {
+    const status = await requestMicrophonePermissionStatus()
+    return status === 'granted';
+}
+
+function setupMicrophonePermissionHandlers() {
+    if (process.platform !== 'darwin') return;
+
+    electron.session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) => {
+        if (permission !== 'media') return false;
+        if (!isYoutubePermissionRequest(webContents, requestingOrigin, details)) return false;
+        if (!isAudioMediaRequest(details)) return false;
+
+        return getMicrophonePermissionStatus() === 'granted'
+    })
+
+    electron.session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+        if (permission !== 'media' || !isYoutubePermissionRequest(webContents, null, details) || !isAudioMediaRequest(details)) {
+            callback(false)
+            return;
+        }
+
+        requestMicrophonePermission()
+        .then((granted) => {
+            callback(granted)
+        })
+        .catch((error) => {
+            console.error('[Permissions] Failed to handle microphone permission request:', error)
+            callback(false)
+        })
+    })
+}
 
 async function main() {
     if (argv['version'] || argv['v']) {
@@ -101,6 +201,7 @@ async function main() {
     await electron.app.whenReady()
 
     autoUpdater.checkForUpdatesAndNotify()
+    setupMicrophonePermissionHandlers()
 
     //general request modification
     electron.session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
@@ -253,6 +354,26 @@ async function main() {
             return deeplink;
         } else {
             return null;
+        }
+    })
+
+    electron.ipcMain.handle('get-microphone-permission-status', () => {
+        return getMicrophonePermissionStatus()
+    })
+
+    electron.ipcMain.handle('request-microphone-permission', () => {
+        return requestMicrophonePermissionStatus()
+    })
+
+    electron.ipcMain.handle('open-microphone-privacy-settings', async () => {
+        if (process.platform !== 'darwin') return false;
+
+        try {
+            await electron.shell.openExternal(microphonePrivacySettingsUrl)
+            return true;
+        } catch (error) {
+            console.error('[Permissions] Failed to open microphone privacy settings:', error)
+            return false;
         }
     })
 

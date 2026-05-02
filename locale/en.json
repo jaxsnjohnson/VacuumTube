@@ -73,6 +73,24 @@
             "title": "Pause on Blur",
             "description": "Pause current video when VacuumTube loses focus (e.g. tabbing out or minimizing the window)"
         },
+        "permissions": {
+            "title": "Permissions",
+            "description": "Manage macOS permissions used by VacuumTube.",
+            "microphone_title": "Microphone",
+            "microphone_description": "Used only when you start YouTube voice search.",
+            "status_label": "Status",
+            "status_loading": "Checking microphone permission...",
+            "request_microphone": "Request Microphone Access",
+            "open_microphone_settings": "Open macOS Microphone Settings",
+            "statuses": {
+                "not-determined": "Not Requested",
+                "granted": "Allowed",
+                "denied": "Denied",
+                "restricted": "Restricted",
+                "unknown": "Unknown",
+                "unsupported": "Unsupported"
+            }
+        },
         "userstyles": {
             "title": "Custom CSS (Userstyles)",
             "description": "Place .css files in the userstyles folder to customize the interface. Changes are applied automatically",
