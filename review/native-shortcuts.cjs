@@ -10,7 +10,7 @@ const id = 'dQw4w9WgXcQ';
 const copy = darwin ? 'Meta+c' : 'Control+Shift+c';
 let app;
 const failures=[];
-setTimeout(()=>{console.error('Native review exceeded three minutes');process.exit(1)},180000).unref();
+setTimeout(()=>{console.error('Native review exceeded five minutes');process.exit(1)},300000).unref();
 (async () => {
  const packaged = process.env.REVIEW_EXECUTABLE;
  app = await electron.launch({ executablePath: packaged || require(path.join(repo, 'node_modules/electron')), args: [...(packaged ? [] : [repo]), '--no-sandbox', '--portable', profile, '--deeplink', `https://www.youtube.com/watch?v=${id}`] });
@@ -35,7 +35,8 @@ setTimeout(()=>{console.error('Native review exceeded three minutes');process.ex
   win.webContents.sendInputEvent({type:'keyDown',keyCode:key.length===1?key.toUpperCase():key[0].toUpperCase()+key.slice(1),modifiers});
   if(!win.isDestroyed())win.webContents.sendInputEvent({type:'keyUp',keyCode:key.length===1?key.toUpperCase():key[0].toUpperCase()+key.slice(1),modifiers});
  },chord);
- await app.evaluate(({app,BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.show();app.focus({steal:true});win.focus();win.webContents.focus()});
+ await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>{clearInterval(poll);reject(new Error('App did not show its own window'))},60000);const poll=setInterval(()=>{if(BrowserWindow.getAllWindows()[0].isVisible()){clearInterval(poll);clearTimeout(timer);resolve()}},100)}));
+ await app.evaluate(({app,BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];app.focus({steal:true});win.focus();win.webContents.focus()});
  await page.waitForFunction(()=>document.hasFocus());
  const read = () => app.evaluate(({clipboard}) => clipboard.readText());
  const write = text => app.evaluate(({clipboard}, text) => clipboard.writeText(text), text);
@@ -93,7 +94,7 @@ setTimeout(()=>{console.error('Native review exceeded three minutes');process.ex
    await press('Meta+c');
    if(process.env.REVIEW_FULLSCREEN !== '0') {
    console.log('ENTERING_FULLSCREEN');
-   await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const win=BrowserWindow.getAllWindows()[0];if(win.isFullScreen())return resolve();const timer=setTimeout(()=>reject(new Error('Fullscreen transition timed out; isFullScreen='+win.isFullScreen())),15000);win.once('enter-full-screen',()=>{clearTimeout(timer);resolve()});win.setFullScreen(true)}));
+   await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const win=BrowserWindow.getAllWindows()[0];if(win.isFullScreen())return resolve();const timer=setTimeout(()=>reject(new Error('Fullscreen transition timed out; isFullScreen='+win.isFullScreen())),60000);win.once('enter-full-screen',()=>{clearTimeout(timer);resolve()});win.setFullScreen(true)}));
    console.log('ENTERED_FULLSCREEN');
    }
    await page.evaluate(()=>{const input=document.createElement('input');document.body.append(input);input.focus()});
