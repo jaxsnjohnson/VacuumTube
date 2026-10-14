@@ -28,8 +28,8 @@ const failures=[];
   const parts=chord.toLowerCase().split('+'); const key=parts.pop();
   const modifiers=parts.map(p=>p==='control'?'control':p);
   const win=BrowserWindow.getAllWindows().find(w=>!w.isDestroyed());
-  win.webContents.sendInputEvent({type:'keyDown',keyCode:key.toUpperCase(),modifiers});
-  if(!win.isDestroyed())win.webContents.sendInputEvent({type:'keyUp',keyCode:key.toUpperCase(),modifiers});
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:key.length===1?key.toUpperCase():key[0].toUpperCase()+key.slice(1),modifiers});
+  if(!win.isDestroyed())win.webContents.sendInputEvent({type:'keyUp',keyCode:key.length===1?key.toUpperCase():key[0].toUpperCase()+key.slice(1),modifiers});
  },chord);
  await app.evaluate(({app,BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.show();app.focus({steal:true});win.focus();win.webContents.focus()});
  await page.waitForFunction(()=>document.hasFocus());
@@ -72,7 +72,10 @@ const failures=[];
  });
  await page.evaluate(()=>{document.querySelector('#review-controls').remove();document.getSelection().removeAllRanges();document.activeElement.blur()});
  await check('home route leaves clipboard unchanged', async () => {
-  await page.evaluate(()=>{location.hash='/'});
+  for(let attempt=0;attempt<4;attempt++) {
+   await press('Escape');await page.waitForTimeout(500);
+   if(await page.evaluate(()=>!document.body.classList.contains('WEB_PAGE_TYPE_WATCH')))break;
+  }
   await page.waitForFunction(()=>!document.body.classList.contains('WEB_PAGE_TYPE_WATCH'));
   console.log('HOME_STATE:',await page.evaluate(()=>({url:location.href,body:document.body.className,video:window.yt?.player?.utils?.videoElement_?.baseURI})));
   await write('sentinel');await press(copy);await page.waitForTimeout(200);assert.equal(await read(),'sentinel');
