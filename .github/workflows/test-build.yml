@@ -1,4 +1,4 @@
-name: Intel packaged shortcut review
+name: Intel quit and fullscreen isolation
 on:
   workflow_dispatch:
 permissions:
@@ -15,6 +15,12 @@ jobs:
             source: codex/macos-command-q
             build: 38654696431
             artifact: macOS
+            fullscreen: '0'
+          - os: macos-26-intel
+            source: codex/macos-copy-video-link
+            build: 38654694016
+            artifact: macOS
+            fullscreen: '1' 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +46,8 @@ jobs:
         working-directory: subject
         env:
           PLAYWRIGHT_MODULE: ${{ runner.temp }}/vt-test/node_modules/playwright
+          REVIEW_FULLSCREEN: ${{ matrix.fullscreen }}
+          REVIEW_QUIT: '1'
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then

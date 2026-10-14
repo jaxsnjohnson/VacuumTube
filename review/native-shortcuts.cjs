@@ -85,15 +85,17 @@ setTimeout(()=>{console.error('Native review exceeded three minutes');process.ex
   console.log('HOME_STATE:',await page.evaluate(()=>({url:location.href,body:document.body.className,video:window.yt?.player?.utils?.videoElement_?.baseURI})));
   await write('sentinel');await press(copy);await page.waitForTimeout(200);assert.equal(await read(),'sentinel');
  });
- if (darwin && fs.existsSync(path.join(repo,'src/macos-shortcuts.js'))) {
-  await check('copy then Command-Q exits fullscreen app with a focused field', async () => {
+ if (darwin && (process.env.REVIEW_QUIT || fs.existsSync(path.join(repo,'src/macos-shortcuts.js')))) {
+  await check(`copy then Command-Q exits ${process.env.REVIEW_FULLSCREEN === '0' ? 'windowed' : 'fullscreen'} app with a focused field`, async () => {
    let beforeQuit=false;
    app.process().stdout.on('data', b=>{if(b.toString().includes('REVIEW_BEFORE_QUIT'))beforeQuit=true});
    await app.evaluate(({app})=>app.on('before-quit',()=>console.log('REVIEW_BEFORE_QUIT')));
    await press('Meta+c');
+   if(process.env.REVIEW_FULLSCREEN !== '0') {
    console.log('ENTERING_FULLSCREEN');
-   await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const win=BrowserWindow.getAllWindows()[0];if(win.isFullScreen())return resolve();const timer=setTimeout(()=>reject(new Error('Fullscreen transition timed out')),15000);win.once('enter-full-screen',()=>{clearTimeout(timer);resolve()});win.setFullScreen(true)}));
+   await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const win=BrowserWindow.getAllWindows()[0];if(win.isFullScreen())return resolve();const timer=setTimeout(()=>reject(new Error('Fullscreen transition timed out; isFullScreen='+win.isFullScreen())),15000);win.once('enter-full-screen',()=>{clearTimeout(timer);resolve()});win.setFullScreen(true)}));
    console.log('ENTERED_FULLSCREEN');
+   }
    await page.evaluate(()=>{const input=document.createElement('input');document.body.append(input);input.focus()});
    const closed=app.waitForEvent('close',{timeout:10000});
    await press('Meta+q').catch(()=>{});await closed;assert.equal(beforeQuit,true);assert.equal(typeof JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8')).volume,'number');app=null;
