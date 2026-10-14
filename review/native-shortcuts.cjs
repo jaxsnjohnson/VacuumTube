@@ -16,6 +16,21 @@ const failures=[];
  page.on('pageerror', error => console.log('PAGE_ERROR:', error.message));
  await page.waitForFunction(() => window.yt?.player?.utils?.videoElement_ && document.body.classList.contains('WEB_PAGE_TYPE_WATCH'), { timeout: 60000 });
  await page.waitForTimeout(1500);
+ app.process().stdout.on('data', b => process.stdout.write(b));
+ await app.evaluate(({ app, BrowserWindow }) => {
+  app.on('before-quit',()=>console.log('REVIEW_BEFORE_QUIT'));
+  for(const win of BrowserWindow.getAllWindows()) {
+   win.webContents.on('before-input-event',(e,i)=>console.log('NATIVE_INPUT',i.type,i.key,i.meta,i.control));
+   win.webContents.on('will-prevent-unload',()=>console.log('REVIEW_UNLOAD_BLOCKED'));
+  }
+ });
+ const press = chord => app.evaluate(({BrowserWindow}, chord) => {
+  const parts=chord.toLowerCase().split('+'); const key=parts.pop();
+  const modifiers=parts.map(p=>p==='control'?'control':p);
+  const win=BrowserWindow.getAllWindows().find(w=>!w.isDestroyed());win.focus();win.webContents.focus();
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:key.toUpperCase(),modifiers});
+  if(!win.isDestroyed())win.webContents.sendInputEvent({type:'keyUp',keyCode:key.toUpperCase(),modifiers});
+ },chord);
  const read = () => app.evaluate(({clipboard}) => clipboard.readText());
  const write = text => app.evaluate(({clipboard}, text) => clipboard.writeText(text), text);
  async function check(name, fn) { try { await fn(); console.log('PASS:', name); } catch(e) { failures.push(name); console.error('FAIL:',name,e.message); } }
@@ -26,12 +41,12 @@ const failures=[];
  console.log('PLATFORM:', process.platform);
  console.log('ACTUAL_VIDEO:', await page.evaluate(() => ({uri:window.yt.player.utils.videoElement_.baseURI, duration:String(window.yt.player.utils.videoElement_.duration), live:document.querySelector('.html5-video-player')?.getVideoData?.()?.isLive})));
  await check('copy actual TV video through production shortcut and native clipboard', async () => {
-  await write('sentinel'); await page.keyboard.press(copy); await expectClipboard(`https://youtu.be/${id}`);
+  await write('sentinel'); await press(copy); await expectClipboard(`https://youtu.be/${id}`);
  });
  if (darwin) {
   await check('timestamp uses current second on actual TV hash route', async () => {
    await page.evaluate(() => { const v=window.yt.player.utils.videoElement_; Object.defineProperties(v,{currentTime:{value:83.9,configurable:true},duration:{value:300,configurable:true}}); });
-   await page.keyboard.press('Meta+Shift+c'); await expectClipboard(`https://youtu.be/${id}?t=83`);
+   await press('Meta+Shift+c'); await expectClipboard(`https://youtu.be/${id}?t=83`);
   });
  }
  await page.evaluate(() => {
@@ -42,13 +57,14 @@ const failures=[];
  });
  for (const [selector, expected] of [['#review-input','input selection'],['#review-textarea','textarea selection'],['#review-editable','editable selection'],['#review-text','page selection'],['#review-shadow input','shadow selection']]) {
   await check(`native text copy ${selector}`, async () => {
-   await page.locator(selector).evaluate(el => { document.getSelection().removeAllRanges(); if(el.select){el.focus();el.select();}else{ el.focus();const range=document.createRange();range.selectNodeContents(el);document.getSelection().addRange(range); } });
-   await write('sentinel'); await page.keyboard.press(darwin ? 'Meta+c':'Control+c'); await expectClipboard(expected);
+   await page.locator(selector).evaluate(el => { document.getSelection().removeAllRanges(); if(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement){el.focus();el.select();}else{ el.focus();const range=document.createRange();range.selectNodeContents(el);document.getSelection().addRange(range); } });
+   console.log('SELECTION:',await page.evaluate(()=>({active:document.activeElement.id,editable:document.activeElement.isContentEditable,selected:String(document.getSelection()),userSelect:getComputedStyle(document.activeElement).userSelect})));
+   await write('sentinel'); await press(darwin ? 'Meta+c':'Control+c'); await expectClipboard(expected);
   });
  }
  await check('focused input without selection preserves clipboard', async () => {
   await page.locator('#review-input').evaluate(el=>{document.getSelection().removeAllRanges();el.focus();el.setSelectionRange(0,0)});
-  await write('sentinel');await page.keyboard.press(darwin?'Meta+c':'Control+c'); await page.waitForTimeout(200);assert.equal(await read(),'sentinel');
+  await write('sentinel');await press(darwin?'Meta+c':'Control+c'); await page.waitForTimeout(200);assert.equal(await read(),'sentinel');
  });
  await page.evaluate(()=>{document.querySelector('#review-controls').remove();document.getSelection().removeAllRanges();document.activeElement.blur()});
  if (darwin) {
@@ -56,9 +72,9 @@ const failures=[];
    let beforeQuit=false;
    app.process().stdout.on('data', b=>{if(b.toString().includes('REVIEW_BEFORE_QUIT'))beforeQuit=true});
    await app.evaluate(({app})=>app.on('before-quit',()=>console.log('REVIEW_BEFORE_QUIT')));
-   await page.keyboard.press('Meta+c');
+   await press('Meta+c');
    const closed=app.waitForEvent('close',{timeout:10000});
-   await page.keyboard.press('Meta+q').catch(()=>{});await closed;assert.equal(beforeQuit,true);app=null;
+   await press('Meta+q').catch(()=>{});await closed;assert.equal(beforeQuit,true);app=null;
   });
  }
  assert.deepEqual(failures,[]);console.log('NATIVE_REVIEW_PASSED');
