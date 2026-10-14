@@ -53,15 +53,16 @@ const failures=[];
   });
  }
  await page.evaluate(() => {
-  const root=document.createElement('div'); root.id='review-controls'; root.style='position:fixed;z-index:2147483647;top:0;left:0;background:white;color:black';
+  const root=document.createElement('dialog'); root.id='review-controls'; root.style='position:fixed;z-index:2147483647;top:0;left:0;background:white;color:black';
   root.innerHTML='<input id="review-input" value="input selection"><textarea id="review-textarea">textarea selection</textarea><div id="review-editable" contenteditable>editable selection</div><p id="review-text" tabindex="0">page selection</p><div id="review-shadow"></div>';
   document.body.append(root); for(const el of [root,...root.querySelectorAll('*')])el.style.setProperty('user-select','text','important');
   root.querySelector('#review-shadow').attachShadow({mode:'open'}).innerHTML='<input value="shadow selection">';
+  root.showModal();
  });
- for (const [selector, expected] of [['#review-input','input selection'],['#review-textarea','textarea selection'],['#review-editable','sentinel'],['#review-text','page selection'],['#review-shadow input','shadow selection']]) {
+ for (const [selector, expected] of [['#review-input','input selection'],['#review-textarea','textarea selection'],['#review-editable','editable selection'],['#review-text','page selection'],['#review-shadow input','shadow selection']]) {
   if(!darwin && selector === '#review-text') continue;
   await check(`native text copy ${selector}`, async () => {
-   await page.locator(selector).evaluate(el => { document.getSelection().removeAllRanges(); if(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement){el.focus();el.select();}else{ el.focus();const range=document.createRange();range.selectNodeContents(el);document.getSelection().addRange(range); } });
+   await page.locator(selector).evaluate(el => { document.getSelection().removeAllRanges(); if(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement){el.focus();el.select();}else{ el.focus();document.getSelection().removeAllRanges();const range=document.createRange();range.selectNodeContents(el);document.getSelection().addRange(range); } });
    console.log('SELECTION:',await page.evaluate(()=>({active:document.activeElement.id,editable:document.activeElement.isContentEditable,selected:String(document.getSelection()),userSelect:getComputedStyle(document.activeElement).userSelect})));
    await write('sentinel'); await press(darwin ? 'Meta+c':'Control+c'); await expectClipboard(expected);
   });
