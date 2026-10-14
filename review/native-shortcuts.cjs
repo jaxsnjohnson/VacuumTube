@@ -14,11 +14,12 @@ const failures=[];
  const packaged = process.env.REVIEW_EXECUTABLE;
  app = await electron.launch({ executablePath: packaged || require(path.join(repo, 'node_modules/electron')), args: [...(packaged ? [] : [repo]), '--no-sandbox', '--portable', profile, '--deeplink', `https://www.youtube.com/watch?v=${id}`] });
  if (packaged) assert.equal(await app.evaluate(({app})=>app.isPackaged), true);
+ app.process().stdout.on('data', b => process.stdout.write(b));
+ app.process().stderr.on('data', b => process.stderr.write(b));
  const page = await app.firstWindow();
  page.on('pageerror', error => console.log('PAGE_ERROR:', error.message));
- await page.waitForFunction(() => window.yt?.player?.utils?.videoElement_ && document.body.classList.contains('WEB_PAGE_TYPE_WATCH'), { timeout: 60000 });
+ await page.waitForFunction(() => window.yt?.player?.utils?.videoElement_ && document.body.classList.contains('WEB_PAGE_TYPE_WATCH'), null, { timeout: 60000 }).catch(async error => { console.error('PAGE_STATE:', await page.evaluate(()=>({url:location.href,body:document.body.innerText.slice(0,2000),player:!!window.yt?.player?.utils?.videoElement_})));throw error; });
  await page.waitForTimeout(1500);
- app.process().stdout.on('data', b => process.stdout.write(b));
  await app.evaluate(({ app, BrowserWindow }) => {
   app.on('before-quit',()=>console.log('REVIEW_BEFORE_QUIT'));
   for(const win of BrowserWindow.getAllWindows()) {

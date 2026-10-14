@@ -1,46 +1,24 @@
-name: Packaged shortcut review
+name: Intel packaged shortcut review
 on:
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 jobs:
-  old-signature:
-    runs-on: macos-latest
-    steps:
-      - name: Audit the previous downloaded package
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download 38649088508 --repo jaxsnjohnson/VacuumTube --name VacuumTube-test-macOS --dir old
-          for arch in arm64 x64; do
-            ditto -x -k "old/VacuumTube-$arch.zip" "old/$arch"
-            app="old/$arch/VacuumTube.app"
-            if codesign --verify --deep --strict --verbose=2 "$app"; then
-              echo "Unexpected: old $arch signature is valid"
-              exit 1
-            fi
-            codesign --display --verbose=4 "$app" 2>&1 || true
-            spctl --assess --type execute --verbose=2 "$app" 2>&1 || true
-          done
   native:
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-26-intel
             source: codex/macos-copy-video-link
             build: 38654694016
             artifact: macOS
-          - os: macos-latest
+          - os: macos-26-intel
             source: codex/macos-command-q
             build: 38654696431
             artifact: macOS
-          - os: ubuntu-latest
-            source: codex/macos-command-q
-            build: 38654696431
-            artifact: Linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +52,12 @@ jobs:
             export REVIEW_EXECUTABLE="$(find "$GITHUB_WORKSPACE/packages/extracted" -type f -name vacuumtube | head -1)"
             xvfb-run -a node ../review/native-shortcuts.cjs
           else
-            for arch in arm64 x64; do
+            for arch in x64; do
               ditto -x -k "../packages/VacuumTube-$arch.zip" "../packages/$arch"
               app="$GITHUB_WORKSPACE/packages/$arch/VacuumTube.app"
               codesign --verify --deep --strict --verbose=2 "$app"
               codesign --display --verbose=4 "$app" 2>&1
+              xattr -w com.apple.quarantine "0083;00000000;Safari;" "$app"
               spctl --assess --type execute --verbose=2 "$app" 2>&1 || true
               cp "$app/Contents/Info.plist" "$RUNNER_TEMP/original.plist"
               plutil -replace CFBundleName -string Broken "$app/Contents/Info.plist"
@@ -88,6 +67,9 @@ jobs:
               fi
               cp "$RUNNER_TEMP/original.plist" "$app/Contents/Info.plist"
               codesign --verify --deep --strict "$app"
+              codesign --verify --deep --strict --verbose=2 "$app" && xattr -dr com.apple.quarantine "$app"
+              if xattr "$app" | grep -q com.apple.quarantine; then exit 1; fi
+              echo 'PASS: documented per-app quarantine removal after signature verification'
               export REVIEW_EXECUTABLE="$app/Contents/MacOS/VacuumTube"
               node ../review/native-shortcuts.cjs
             done
