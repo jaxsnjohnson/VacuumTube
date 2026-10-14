@@ -31,6 +31,8 @@ const failures=[];
   win.webContents.sendInputEvent({type:'keyDown',keyCode:key.toUpperCase(),modifiers});
   if(!win.isDestroyed())win.webContents.sendInputEvent({type:'keyUp',keyCode:key.toUpperCase(),modifiers});
  },chord);
+ await app.evaluate(({app,BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.show();app.focus({steal:true});win.focus();win.webContents.focus()});
+ await page.waitForFunction(()=>document.hasFocus());
  const read = () => app.evaluate(({clipboard}) => clipboard.readText());
  const write = text => app.evaluate(({clipboard}, text) => clipboard.writeText(text), text);
  async function check(name, fn) { try { await fn(); console.log('PASS:', name); } catch(e) { failures.push(name); console.error('FAIL:',name,e.message); } }
@@ -47,6 +49,7 @@ const failures=[];
   await check('timestamp uses current second on actual TV hash route', async () => {
    await page.evaluate(() => { const v=window.yt.player.utils.videoElement_; Object.defineProperties(v,{currentTime:{value:83.9,configurable:true},duration:{value:300,configurable:true}}); });
    await press('Meta+Shift+c'); await expectClipboard(`https://youtu.be/${id}?t=83`);
+   await page.evaluate(()=>{const v=window.yt.player.utils.videoElement_;delete v.currentTime;delete v.duration});
   });
  }
  await page.evaluate(() => {
@@ -70,7 +73,8 @@ const failures=[];
  await page.evaluate(()=>{document.querySelector('#review-controls').remove();document.getSelection().removeAllRanges();document.activeElement.blur()});
  await check('home route leaves clipboard unchanged', async () => {
   await page.evaluate(()=>{location.hash='/'});
-  await page.waitForTimeout(1000);
+  await page.waitForFunction(()=>!document.body.classList.contains('WEB_PAGE_TYPE_WATCH'));
+  console.log('HOME_STATE:',await page.evaluate(()=>({url:location.href,body:document.body.className,video:window.yt?.player?.utils?.videoElement_?.baseURI})));
   await write('sentinel');await press(copy);await page.waitForTimeout(200);assert.equal(await read(),'sentinel');
  });
  if (darwin && fs.existsSync(path.join(repo,'src/macos-shortcuts.js'))) {
