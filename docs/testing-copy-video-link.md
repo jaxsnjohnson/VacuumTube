@@ -30,6 +30,19 @@ builds; macOS may require approving the app in Privacy & Security.
    keydown should copy/notify. Switch away while holding Command and test again.
 8. Confirm Ctrl-Shift-C still copies a plain link.
 
+## macOS quitting
+
+1. Launch the app, press Command-Q and confirm the process exits (the Dock running
+   indicator disappears). This must quit the app, not just close its window.
+2. Repeat in fullscreen, during playback, with the search field focused, and with
+   the settings overlay open. Confirm playback stops and the process exits.
+3. Relaunch and verify saved settings survive quitting.
+4. Confirm plain Q, Ctrl-Q, Option-Command-Q and Shift-Command-Q do not trigger
+   this shortcut. Confirm Command-C and Command-Shift-C still copy correctly.
+5. Close the window using its close button. The app should retain normal macOS
+   behavior (remain running); the native application menu's Quit action should
+   still quit it. Test Command-Q while the app has no open window as well.
+
 ## Linux
 
 Extract the tarball and launch `./vacuumtube`, or make the AppImage executable and

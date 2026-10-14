@@ -400,14 +400,7 @@ async function createWindow() {
     }
 
     if (process.platform === 'darwin') {
-        //Let the renderer choose between copying text and copying a video link.
-        //The renderer requests native text copying when a field or selection is active.
-        win.webContents.on('before-input-event', (event, input) => {
-            win.webContents.setIgnoreMenuShortcuts(
-                input.meta && !input.control && !input.alt && input.key?.toLowerCase() === 'c'
-            )
-        })
-        win.webContents.on('blur', () => win.webContents.setIgnoreMenuShortcuts(false))
+        require('./macos-shortcuts').setup(win.webContents, electron.app)
     }
 
     win.setMenuBarVisibility(false)
