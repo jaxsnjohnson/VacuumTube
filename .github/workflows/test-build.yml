@@ -1,21 +1,46 @@
-name: Native shortcut review
+name: Packaged shortcut review
 on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
+  old-signature:
+    runs-on: macos-latest
+    steps:
+      - name: Audit the previous downloaded package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 38649088508 --repo jaxsnjohnson/VacuumTube --name VacuumTube-test-macOS --dir old
+          for arch in arm64 x64; do
+            ditto -x -k "old/VacuumTube-$arch.zip" "old/$arch"
+            app="old/$arch/VacuumTube.app"
+            if codesign --verify --deep --strict --verbose=2 "$app"; then
+              echo "Unexpected: old $arch signature is valid"
+              exit 1
+            fi
+            codesign --display --verbose=4 "$app" 2>&1 || true
+            spctl --assess --type execute --verbose=2 "$app" 2>&1 || true
+          done
   native:
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             source: codex/macos-copy-video-link
+            build: 38654694016
+            artifact: macOS
           - os: macos-latest
             source: codex/macos-command-q
+            build: 38654696431
+            artifact: macOS
           - os: ubuntu-latest
             source: codex/macos-command-q
+            build: 38654696431
+            artifact: Linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,19 +51,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-      - run: npm ci
-        working-directory: subject
-      - run: npm test
-        working-directory: subject
       - run: npm install --prefix "$RUNNER_TEMP/vt-test" playwright@1.62.1
-      - name: Native keyboard and clipboard integration
+      - name: Download published test artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ matrix.build }}
+          ARTIFACT_NAME: VacuumTube-test-${{ matrix.artifact }}
+        run: |
+          gh run watch "$BUILD_RUN" --repo jaxsnjohnson/VacuumTube --exit-status --interval 15
+          gh run download "$BUILD_RUN" --repo jaxsnjohnson/VacuumTube --name "$ARTIFACT_NAME" --dir packages
+          cd packages
+          shasum -a 256 -c SHA256SUMS
+      - name: Verify and exercise the extracted application
         working-directory: subject
         env:
           PLAYWRIGHT_MODULE: ${{ runner.temp }}/vt-test/node_modules/playwright
+        shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
+            mkdir ../packages/extracted
+            tar -xf ../packages/VacuumTube-x64.tar.gz -C ../packages/extracted
+            export REVIEW_EXECUTABLE="$(find "$GITHUB_WORKSPACE/packages/extracted" -type f -name vacuumtube | head -1)"
             xvfb-run -a node ../review/native-shortcuts.cjs
           else
-            node ../review/native-shortcuts.cjs
+            for arch in arm64 x64; do
+              ditto -x -k "../packages/VacuumTube-$arch.zip" "../packages/$arch"
+              app="$GITHUB_WORKSPACE/packages/$arch/VacuumTube.app"
+              codesign --verify --deep --strict --verbose=2 "$app"
+              codesign --display --verbose=4 "$app" 2>&1
+              spctl --assess --type execute --verbose=2 "$app" 2>&1 || true
+              cp "$app/Contents/Info.plist" "$RUNNER_TEMP/original.plist"
+              plutil -replace CFBundleName -string Broken "$app/Contents/Info.plist"
+              if codesign --verify --deep --strict "$app"; then
+                echo 'Signature verification failed to detect tampering'
+                exit 1
+              fi
+              cp "$RUNNER_TEMP/original.plist" "$app/Contents/Info.plist"
+              codesign --verify --deep --strict "$app"
+              export REVIEW_EXECUTABLE="$app/Contents/MacOS/VacuumTube"
+              node ../review/native-shortcuts.cjs
+            done
           fi

@@ -11,7 +11,9 @@ const copy = darwin ? 'Meta+c' : 'Control+Shift+c';
 let app;
 const failures=[];
 (async () => {
- app = await electron.launch({ executablePath: require(path.join(repo, 'node_modules/electron')), args: [repo, '--no-sandbox', '--portable', profile, '--deeplink', `https://www.youtube.com/watch?v=${id}`] });
+ const packaged = process.env.REVIEW_EXECUTABLE;
+ app = await electron.launch({ executablePath: packaged || require(path.join(repo, 'node_modules/electron')), args: [...(packaged ? [] : [repo]), '--no-sandbox', '--portable', profile, '--deeplink', `https://www.youtube.com/watch?v=${id}`] });
+ if (packaged) assert.equal(await app.evaluate(({app})=>app.isPackaged), true);
  const page = await app.firstWindow();
  page.on('pageerror', error => console.log('PAGE_ERROR:', error.message));
  await page.waitForFunction(() => window.yt?.player?.utils?.videoElement_ && document.body.classList.contains('WEB_PAGE_TYPE_WATCH'), { timeout: 60000 });
