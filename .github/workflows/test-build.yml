@@ -20,7 +20,7 @@ jobs:
             source: codex/macos-copy-video-link
             build: 38654694016
             artifact: macOS
-            fullscreen: '1' 
+            fullscreen: '1'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
