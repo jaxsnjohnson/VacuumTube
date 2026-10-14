@@ -1,25 +1,16 @@
-name: Test builds
-
+name: Native shortcut review
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  build:
+  native:
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            name: macOS
-            args: --mac zip --x64 --arm64
-          - os: ubuntu-latest
-            name: Linux
-            args: --linux AppImage tar.gz --x64
+        os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,16 +19,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Build unsigned test packages
-        run: npx electron-builder ${{ matrix.args }} --publish never
+      - run: npm install --prefix "$RUNNER_TEMP/vt-test" playwright@1.62.1
+      - name: Native keyboard and clipboard integration
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: VacuumTube-test-${{ matrix.name }}
-          path: |
-            dist/*.zip
-            dist/*.AppImage
-            dist/*.tar.gz
-          if-no-files-found: error
-          retention-days: 14
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/vt-test/node_modules/playwright
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a node review/native-shortcuts.cjs
+          else
+            node review/native-shortcuts.cjs
+          fi
