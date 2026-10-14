@@ -10,6 +10,7 @@ const id = 'dQw4w9WgXcQ';
 const copy = darwin ? 'Meta+c' : 'Control+Shift+c';
 let app;
 const failures=[];
+setTimeout(()=>{console.error('Native review exceeded three minutes');process.exit(1)},180000).unref();
 (async () => {
  const packaged = process.env.REVIEW_EXECUTABLE;
  app = await electron.launch({ executablePath: packaged || require(path.join(repo, 'node_modules/electron')), args: [...(packaged ? [] : [repo]), '--no-sandbox', '--portable', profile, '--deeplink', `https://www.youtube.com/watch?v=${id}`] });
@@ -90,7 +91,9 @@ const failures=[];
    app.process().stdout.on('data', b=>{if(b.toString().includes('REVIEW_BEFORE_QUIT'))beforeQuit=true});
    await app.evaluate(({app})=>app.on('before-quit',()=>console.log('REVIEW_BEFORE_QUIT')));
    await press('Meta+c');
-   await app.evaluate(({BrowserWindow})=>new Promise(resolve=>{const win=BrowserWindow.getAllWindows()[0];win.once('enter-full-screen',resolve);win.setFullScreen(true)}));
+   console.log('ENTERING_FULLSCREEN');
+   await app.evaluate(({BrowserWindow})=>new Promise((resolve,reject)=>{const win=BrowserWindow.getAllWindows()[0];if(win.isFullScreen())return resolve();const timer=setTimeout(()=>reject(new Error('Fullscreen transition timed out')),15000);win.once('enter-full-screen',()=>{clearTimeout(timer);resolve()});win.setFullScreen(true)}));
+   console.log('ENTERED_FULLSCREEN');
    await page.evaluate(()=>{const input=document.createElement('input');document.body.append(input);input.focus()});
    const closed=app.waitForEvent('close',{timeout:10000});
    await press('Meta+q').catch(()=>{});await closed;assert.equal(beforeQuit,true);assert.equal(typeof JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8')).volume,'number');app=null;

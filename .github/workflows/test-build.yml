@@ -6,15 +6,11 @@ permissions:
   actions: read
 jobs:
   native:
-    timeout-minutes: 20
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-26-intel
-            source: codex/macos-copy-video-link
-            build: 38654694016
-            artifact: macOS
           - os: macos-26-intel
             source: codex/macos-command-q
             build: 38654696431
