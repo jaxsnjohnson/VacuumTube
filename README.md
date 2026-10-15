@@ -117,6 +117,8 @@ VacuumTube has some settings that you can change, which are located in the YouTu
 
 VacuumTube exposes a few extra input mappings for actions that may be desired on a desktop:
 
+- `Command+Q` (macOS)
+  - Quit VacuumTube, including in fullscreen or a text field. Closing the window keeps the app running.
 - `Ctrl+O`
   - Open VacuumTube Settings
 - `Ctrl+Shift+C` (all platforms), or `Command+C` (macOS)
