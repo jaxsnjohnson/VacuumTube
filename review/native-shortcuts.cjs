@@ -50,13 +50,7 @@ setTimeout(()=>{console.error('Native review exceeded five minutes');process.exi
  await check('copy actual TV video through production shortcut and native clipboard', async () => {
   await write('sentinel'); await press(copy); await expectClipboard(`https://youtu.be/${id}`);
  });
- if (darwin) {
-  await check('timestamp uses current second on actual TV hash route', async () => {
-   await page.evaluate(() => { const v=window.yt.player.utils.videoElement_; Object.defineProperties(v,{currentTime:{value:83.9,configurable:true},duration:{value:300,configurable:true}}); });
-   await press('Meta+Shift+c'); await expectClipboard(`https://youtu.be/${id}?t=83`);
-   await page.evaluate(()=>{const v=window.yt.player.utils.videoElement_;delete v.currentTime;delete v.duration});
-  });
- }
+ //Timestamp playback and seeking are covered by timestamp-playback.cjs.
  await page.evaluate(() => {
   const root=document.createElement('dialog'); root.id='review-controls'; root.style='position:fixed;z-index:2147483647;top:0;left:0;background:white;color:black';
   root.innerHTML='<input id="review-input" value="input selection"><textarea id="review-textarea">textarea selection</textarea><div id="review-editable" contenteditable>editable selection</div><p id="review-text" tabindex="0">page selection</p><div id="review-shadow"></div>';

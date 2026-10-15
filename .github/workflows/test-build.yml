@@ -1,72 +1,58 @@
-name: Intel packaged startup and fullscreen quit
+name: Timestamp playback regression
 on:
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 jobs:
-  native:
-    timeout-minutes: 8
+  playback:
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
         include:
+          - os: macos-latest
+            arch: arm64
+            build: 38690743365
+          - os: macos-latest
+            arch: arm64
+            build: 38690745772
           - os: macos-26-intel
-            source: codex/macos-command-q
-            build: 38654696431
-            artifact: macOS
+            arch: x64
+            build: 38690745772
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ matrix.source }}
-          path: subject
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm install --prefix "$RUNNER_TEMP/vt-test" playwright@1.62.1
-      - name: Download published test artifacts
+      - name: Reproduce the missing timestamp in the previous downloaded build
+        if: matrix.arch == 'arm64' && matrix.build == 38690745772
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/vt-test/node_modules/playwright
+          EXPECT_TIMESTAMP: 'false'
+        run: |
+          gh run download 38654696431 --repo jaxsnjohnson/VacuumTube --name VacuumTube-test-macOS --dir previous
+          ditto -x -k previous/VacuumTube-arm64.zip previous/extracted
+          export REVIEW_EXECUTABLE="$GITHUB_WORKSPACE/previous/extracted/VacuumTube.app/Contents/MacOS/VacuumTube"
+          node review/timestamp-playback.cjs
+      - name: Download the replacement package
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN: ${{ matrix.build }}
-          ARTIFACT_NAME: VacuumTube-test-${{ matrix.artifact }}
         run: |
           gh run watch "$BUILD_RUN" --repo jaxsnjohnson/VacuumTube --exit-status --interval 15
-          gh run download "$BUILD_RUN" --repo jaxsnjohnson/VacuumTube --name "$ARTIFACT_NAME" --dir packages
-          cd packages
+          gh run download "$BUILD_RUN" --repo jaxsnjohnson/VacuumTube --name VacuumTube-test-macOS --dir fixed
+          cd fixed
           shasum -a 256 -c SHA256SUMS
-      - name: Verify and exercise the extracted application
-        working-directory: subject
+      - name: Verify real playback timestamps through production native shortcuts
         env:
           PLAYWRIGHT_MODULE: ${{ runner.temp }}/vt-test/node_modules/playwright
-        shell: bash
+          PACKAGE_ARCH: ${{ matrix.arch }}
         run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            mkdir ../packages/extracted
-            tar -xf ../packages/VacuumTube-x64.tar.gz -C ../packages/extracted
-            export REVIEW_EXECUTABLE="$(find "$GITHUB_WORKSPACE/packages/extracted" -type f -name vacuumtube | head -1)"
-            xvfb-run -a node ../review/native-shortcuts.cjs
-          else
-            for arch in x64; do
-              ditto -x -k "../packages/VacuumTube-$arch.zip" "../packages/$arch"
-              app="$GITHUB_WORKSPACE/packages/$arch/VacuumTube.app"
-              codesign --verify --deep --strict --verbose=2 "$app"
-              codesign --display --verbose=4 "$app" 2>&1
-              xattr -w com.apple.quarantine "0083;00000000;Safari;" "$app"
-              spctl --assess --type execute --verbose=2 "$app" 2>&1 || true
-              cp "$app/Contents/Info.plist" "$RUNNER_TEMP/original.plist"
-              plutil -replace CFBundleName -string Broken "$app/Contents/Info.plist"
-              if codesign --verify --deep --strict "$app"; then
-                echo 'Signature verification failed to detect tampering'
-                exit 1
-              fi
-              cp "$RUNNER_TEMP/original.plist" "$app/Contents/Info.plist"
-              codesign --verify --deep --strict "$app"
-              codesign --verify --deep --strict --verbose=2 "$app" && xattr -dr com.apple.quarantine "$app"
-              if xattr "$app" | grep -q com.apple.quarantine; then exit 1; fi
-              echo 'PASS: documented per-app quarantine removal after signature verification'
-              export REVIEW_EXECUTABLE="$app/Contents/MacOS/VacuumTube"
-              node ../review/native-shortcuts.cjs
-            done
-          fi
+          ditto -x -k "fixed/VacuumTube-$PACKAGE_ARCH.zip" fixed/extracted
+          codesign --verify --deep --strict fixed/extracted/VacuumTube.app
+          export REVIEW_EXECUTABLE="$GITHUB_WORKSPACE/fixed/extracted/VacuumTube.app/Contents/MacOS/VacuumTube"
+          node review/timestamp-playback.cjs
